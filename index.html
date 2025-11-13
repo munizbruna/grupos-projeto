@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sorteador de Projetos Finais</title>
+    <!-- Carrega o Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Scripts do Firebase -->
+    <script type="module">
+      // Importações do Firebase (CORRIGIDO)
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
+      // Adicionadas as importações necessárias de Auth e Database
+      import { 
+        getAuth, 
+        signInAnonymously, 
+        onAuthStateChanged, 
+        signInWithCustomToken // Deixamos a importação caso seja necessária no futuro
+      } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
+      import { 
+        getDatabase, 
+        ref, 
+        onValue, 
+        push, 
+        serverTimestamp 
+      } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
+
+      // Your web app's Firebase configuration
+      const firebaseConfig = {
+        apiKey: "AIzaSyBQ1BZzNR29JHgKBwnc-Aw-srkNyUtWitw",
+        authDomain: "grupos1dtm.firebaseapp.com",
+        databaseURL: "https://grupos1dtm-default-rtdb.firebaseio.com",
+        projectId: "grupos1dtm",
+        storageBucket: "grupos1dtm.firebasestorage.app",
+        messagingSenderId: "430318775536",
+        appId: "1:430318775536:web:8162104c106f98f5646635",
+        measurementId: "G-KK96TX9ZLM",
+      };
+
+      // Initialize Firebase
+      const app = initializeApp(firebaseConfig);
+      
+      const auth = getAuth(app);
+      const db = getDatabase(app); 
+
+      // ID do App (CORRIGIDO: Usando o projectId diretamente)
+      const appId = "grupos1dtm";
+
+      let userId = null;
+      let isAuthReady = false; 
+
+      // Referência no Realtime Database
+      const assignedProjectsRef = ref(
+        db,
+        `artifacts/${appId}/public/data/project_assignments`
+      ); 
+
+      // Variáveis de estado
+      let assignedStudents = new Set(); 
+      let projectCounts = {}; 
+
+      // Elementos do DOM (Declarados com 'let' para serem atribuídos depois)
+      let student1Select, student2Select, suggestButton, suggestionDiv, messageDiv, consultationList, loader;
+
+      // --- BANCO DE DADOS (Estático) ---
+      const projects = {
+        P1: {
+          title: 'Café & Arte "Grão Criativo"',
+          objective: "Criar um site visualmente atraente...",
+          location: "Vila Madalena, São Paulo/SP",
+          challenge: "Layout assimétrico (masonry) para a galeria.",
+        },
+        P2: {
+          title: 'ONG de Resgate Animal "Patas Carentes"',
+          objective: "Apresentar a ONG, mostrar os animais para adoção...",
+          location: "Arredores de Curitiba/PR",
+          challenge:
+            'O projeto mais direto. "Cards" (Flexbox) e formulário padrão.',
+        },
+        P3: {
+          title: 'Portfólio de Fotografia "Luz Urbana"',
+          objective: "Servir como o portfólio digital da fotógrafa...",
+          location: "Belo Horizonte/MG",
+          challenge: "Desafio estético (minimalismo). Galeria em Grid.",
+        },
+        P4: {
+          title: 'Evento "Conferência WebDev 2025"',
+          objective: "Informar sobre a conferência, gerar credibilidade...",
+          location: "Florianópolis/SC",
+          challenge: "Tabela de programação responsiva.",
+        },
+        P5: {
+          title: 'Restaurante "Sabor da Terra" (Vegano)',
+          objective: 'Refletir a identidade "saudável e moderna"...',
+          location: "Botafogo, Rio de Janeiro/RJ",
+          challenge: "Alinhamento do cardápio (Flexbox space-between).",
+        },
+        P6: {
+          title: 'Estúdio de Yoga "Serenidade"',
+          objective: "Atrair novos alunos, informar sobre modalidades...",
+          location: "Graça, Salvador/BA",
+          challenge: "Tabela de horários responsiva.",
+        },
+        P7: {
+          title: "EcoAventura Trilhas (Clube)",
+          objective:
+            "Profissionalizar a imagem do clube, centralizar trilhas...",
+          location: "Serra da Mantiqueira, Campos do Jordão/SP",
+          challenge: "Exige Flexbox (cards) e Grid (galeria).",
+        },
+        P8: {
+          title: 'Landing Page do App "FinanFácil"',
+          objective: "Apresentar os benefícios do app, capturar leads...",
+          location: "N/A (App digital)",
+          challenge: "Navegação interna (#links) em página única.",
+        },
+      };
+
+      // 2. Mapeamento de Dificuldade
+      const difficultyMap = {
+        Facil: ["P2"],
+        Medio: ["P3", "P5", "P7", "P8"],
+        Desafiador: ["P1", "P4", "P6"],
+      };
+
+      // 3. Banco de Dados de Alunos
+      const students = {
+        "ANA CAROLINA DOS SANTOS GALANTE": 3,
+        "ANDRÉ MOREIRA JACOBINO": 5,
+        "ANDRÉ ZANCAN ROSA": 4,
+        "BEATRIZ DE FILIPPO SOUZA CIRINO": 4,
+        "BRENNO DOS SANTOS FAUSTINO MOTTA": 3,
+        "FELIPE COSTA OLIVEIRA": 2,
+        "GEOVANNA GUERRA GONZAGA": 3,
+        "GIOVANA DOS SANTOS BITENCORTE": 3,
+        "HENRIQUE PRANDO DE OLIVEIRA": 2,
+        "KAICK GONÇALVES FLAUZINO": 3,
+        "KAIQUE SASAKI DE CAMPOS": 4,
+        "KAYKY RODRIGUES DE PAULA": 5,
+        "LÉO HENRIQUE FELIX DA SILVA": 5,
+        "MATHEUS HENRIQUE MACHADO DE PAULA": 5,
+        "MAYRA CLEMENTE AMERICO NERY": 1,
+        "PEDRO HENRIQUE SOUZA DA SILVA": 1,
+        "VINÍCIUS CESAR MACHADO CARDOSO": 2,
+        "YASMIN GABRIELLA CAVALCANTI DE BARROS": 2,
+        "ARIELLY SILVA RODRIGUES": 3,
+        "GEOVANNA BOGOVICZ PAZINI": 4,
+        "GIOVANNA FERREIRA ROSSATO": 2,
+        "ISABELA MACHADO GREJANIN": 2,
+        "JOÃO VITOR DE LIMA PRIMO": 1,
+        "JULIA DIANA DE PAULA": 4,
+        "LARISSA HELENA MACHADO CARDOSO": 2,
+        "LYVIA DA MATA LIMA": 3,
+        "MANUELA GOMES RIBEIRO": 2,
+        "MARIANA LIMA FERNANDES": 2,
+        "MONIQUE RODRIGUES DA SILVA": 1,
+        "NICOLLY LOSNAQUE NUNES": 3,
+        "YASMIM MEIRA LIVON": 4,
+        "ISABELLA DELGADO DOS SANTOS": 2,
+      };
+
+      // --- LÓGICA DA APLICAÇÃO ---
+
+      // Função de autenticação
+      onAuthStateChanged(auth, async (user) => {
+        if (user) {
+          userId = user.uid;
+          console.log("Autenticado! UserID:", userId);
+          isAuthReady = true;
+          // Agora que estamos autenticados, ouvimos os dados
+          listenToAssignments();
+        } else {
+          console.log("Usuário não autenticado, tentando login...");
+          try {
+            // CORREÇÃO: Força o login anônimo, pois o token do ambiente
+            // (__initial_auth_token) não é válido para este projeto Firebase.
+            await signInAnonymously(auth);
+
+          } catch (error) {
+            console.error("Erro na autenticação:", error);
+            // CORREÇÃO: Captura o erro específico se o login anônimo não estiver ativado
+            if (error.code === 'auth/operation-not-allowed' || error.code === 'auth/configuration-not-found') {
+                showMessage("Erro: Login anônimo não está ativado no console do Firebase.", "error");
+            } else {
+                showMessage("Erro ao conectar com o banco de dados.", "error");
+            }
+          }
+        }
+      });
+
+      // 2. Ouve o banco de dados em tempo real (para Lógicas 1, 2 e Consulta)
+      function listenToAssignments() {
+        if (!userId) return; // Garante que o userId exista
+
+        onValue(
+          assignedProjectsRef,
+          (snapshot) => {
+            console.log("Dados do Realtime Database recebidos!");
+
+            // Reseta as variáveis de estado
+            assignedStudents.clear();
+            projectCounts = {};
+
+            const assignmentsData = snapshot.val(); 
+            const assignments = [];
+
+            if (assignmentsData) {
+              // Transforma o objeto de objetos em um array
+              Object.values(assignmentsData).forEach((data) => {
+                assignments.push(data);
+
+                // Lógica 1: Popula o Set de alunos já atribuídos
+                assignedStudents.add(data.student1);
+                assignedStudents.add(data.student2);
+
+                // Lógica 2: Conta as atribuições de projetos
+                projectCounts[data.projectId] =
+                  (projectCounts[data.projectId] || 0) + 1;
+              });
+            }
+
+            // Renderiza a lista de consulta
+            renderConsultationList(assignments);
+            console.log("Alunos Atribuídos:", assignedStudents);
+            console.log("Contagem de Projetos:", projectCounts);
+          },
+          (error) => {
+            console.error("Erro ao ouvir o Realtime Database:", error);
+            showMessage(
+              "Erro ao carregar os dados. Verifique o console.",
+              "error"
+            );
+          }
+        );
+      }
+
+      // 3. Renderiza a lista de consulta
+      function renderConsultationList(assignments) {
+        if (!consultationList) return; // Espera o DOM
+        
+        consultationList.innerHTML = ""; // Limpa a lista
+        if (assignments.length === 0) {
+          consultationList.innerHTML =
+            '<p class="text-gray-500">Nenhum projeto atribuído ainda.</p>';
+          return;
+        }
+
+        assignments.forEach((data) => {
+          const item = document.createElement("div");
+          item.className =
+            "p-3 bg-white border border-gray-200 rounded-md shadow-sm mb-2";
+          item.innerHTML = `
+                        <p class="font-semibold text-blue-800">${data.projectTitle} (ID: ${data.projectId})</p>
+                        <p class="text-sm text-gray-700">Dupla: ${data.student1} & ${data.student2}</p>
+                    `;
+          consultationList.appendChild(item);
+        });
+      }
+
+      
+      // 5. Função para Exibir a Sugestão do Projeto
+      function displayProject(project, difficulty) {
+        let difficultyColor = "";
+        switch (difficulty) {
+          case "Facil":
+            difficultyColor = "text-green-600 bg-green-100 border-green-300";
+            break;
+          case "Medio":
+            difficultyColor = "text-yellow-700 bg-yellow-100 border-yellow-300";
+            break;
+          case "Desafiador":
+            difficultyColor = "text-red-600 bg-red-100 border-red-300";
+            break;
+        }
+
+        suggestionDiv.innerHTML = `
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="text-sm font-medium text-green-700">Projeto Sugerido e Registrado!</p>
+                            <h2 class="text-2xl font-bold text-gray-800 mb-2">${
+                              project.title
+                            } (ID: ${Object.keys(projects).find(
+          (k) => projects[k] === project
+        )})</h2>
+                        </div>
+                        <span class="ml-4 px-3 py-1 rounded-full text-sm font-semibold border ${difficultyColor}">${difficulty}</span>
+                    </div>
+                    <p class="text-gray-600 mb-3"><strong class="font-medium text-gray-700">Localização:</strong> ${
+                      project.location
+                    }</p>
+                    <p class="text-gray-700 mb-4"><strong class="font-medium text-gray-900">Objetivo:</strong><br>${
+                      project.objective
+                    }</p>
+                    <div class="bg-white p-3 border border-gray-200 rounded-md">
+                        <p class="text-sm text-gray-800"><strong class="font-medium text-blue-700">Ponto de Maior Desafio:</strong><br>${
+                          project.challenge
+                        }</p>
+                    </div>
+                `;
+        suggestionDiv.classList.remove("hidden");
+      }
+
+      // 6. Função para Exibir Mensagens de Erro/Status
+      function showMessage(message, type) {
+        if (!messageDiv) return; // Espera o DOM
+
+        messageDiv.textContent = message;
+        messageDiv.className = "mt-4 p-3 rounded-lg text-sm"; // Reseta classes
+
+        switch (type) {
+          case "error":
+            messageDiv.classList.add("bg-red-100", "text-red-700");
+            break;
+          case "success":
+            messageDiv.classList.add("bg-green-100", "text-green-700");
+            break;
+          default:
+            messageDiv.classList.add("hidden");
+        }
+      }
+
+      // CORREÇÃO: Espera o DOM carregar antes de manipular os elementos
+      document.addEventListener("DOMContentLoaded", () => {
+        // Atribui os elementos do DOM
+        student1Select = document.getElementById("student1-select");
+        student2Select = document.getElementById("student2-select");
+        suggestButton = document.getElementById("suggest-button");
+        suggestionDiv = document.getElementById("project-suggestion");
+        messageDiv = document.getElementById("message-area");
+        consultationList = document.getElementById("consultation-list");
+        loader = document.getElementById("loader");
+
+        // 1. Popula os Dropdowns de Alunos
+        const studentNames = Object.keys(students).sort();
+        studentNames.forEach((name) => {
+          const option1 = document.createElement("option");
+          option1.value = name;
+          option1.textContent = name;
+          student1Select.appendChild(option1);
+
+          const option2 = document.createElement("option");
+          option2.value = name;
+          option2.textContent = name;
+          student2Select.appendChild(option2);
+        });
+
+        // 4. Adiciona o Evento ao Botão "Sugerir"
+        suggestButton.addEventListener("click", async () => {
+          // Limpa mensagens e sugestões anteriores
+          showMessage("", "clear");
+          suggestionDiv.classList.add("hidden");
+          loader.classList.remove("hidden"); // Mostra o loader
+
+          if (!isAuthReady) {
+            showMessage("Aguarde, conectando ao banco de dados...", "error");
+            loader.classList.add("hidden");
+            return;
+          }
+
+          const student1Name = student1Select.value;
+          const student2Name = student2Select.value;
+
+          // --- Validações ---
+          if (!student1Name || !student2Name) {
+            showMessage("Por favor, selecione dois alunos.", "error");
+            loader.classList.add("hidden");
+            return;
+          }
+          if (student1Name === student2Name) {
+            showMessage("Por favor, selecione dois alunos diferentes.", "error");
+            loader.classList.add("hidden");
+            return;
+          }
+          if (assignedStudents.has(student1Name)) {
+            showMessage(
+              `Erro: O aluno "${student1Name}" já está em um grupo.`,
+              "error"
+            );
+            loader.classList.add("hidden");
+            return;
+          }
+          if (assignedStudents.has(student2Name)) {
+            showMessage(
+              `Erro: O aluno "${student2Name}" já está em um grupo.`,
+              "error"
+            );
+            loader.classList.add("hidden");
+            return;
+          }
+
+          // --- Lógica de Sorteio ---
+          const level1 = students[student1Name];
+          const level2 = students[student2Name];
+          const averageLevel = (level1 + level2) / 2;
+          const combinedLevel = Math.round(averageLevel);
+
+          let difficultyCategory;
+          if (combinedLevel <= 1) difficultyCategory = "Facil";
+          else if (combinedLevel <= 3) difficultyCategory = "Medio";
+          else difficultyCategory = "Desafiador";
+
+          const possibleProjectIds = difficultyMap[difficultyCategory];
+          const availableProjectIds = possibleProjectIds.filter(
+            (id) => (projectCounts[id] || 0) < 2
+          );
+
+          if (availableProjectIds.length === 0) {
+            showMessage(
+              `Não há mais projetos disponíveis na categoria "${difficultyCategory}". Verifique as atribuições.`,
+              "error"
+            );
+            loader.classList.add("hidden");
+            return;
+          }
+
+          const randomProjectId =
+            availableProjectIds[
+              Math.floor(Math.random() * availableProjectIds.length)
+            ];
+          const project = projects[randomProjectId];
+
+          // --- REGISTRA NO REALTIME DATABASE ---
+          try {
+            await push(assignedProjectsRef, {
+              student1: student1Name,
+              student2: student2Name,
+              combinedLevel: combinedLevel,
+              difficultyCategory: difficultyCategory,
+              projectId: randomProjectId,
+              projectTitle: project.title,
+              assignedAt: serverTimestamp(), 
+            });
+
+            // Sucesso! Exibe o projeto
+            displayProject(project, difficultyCategory);
+          } catch (error) {
+            console.error("Erro ao salvar no Realtime Database:", error);
+            showMessage("Erro ao salvar a atribuição. Tente novamente.", "error");
+          } finally {
+            loader.classList.add("hidden"); // Esconde o loader
+          }
+        });
+      });
+
+    </script>
+
+    <style>
+      /* Estilos adicionais (Loader, etc) */
+      .loader {
+        border: 4px solid #f3f3f3; /* Light grey */
+        border-top: 4px solid #3498db; /* Blue */
+        border-radius: 50%;
+        width: 24px;
+        height: 24px;
+        animation: spin 1s linear infinite;
+        margin: 1rem auto 0;
+      }
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+      .hidden {
+        display: none;
+      }
+    </style>
+  </head>
+  <body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+    <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-2xl">
+      <!-- Cabeçalho -->
+      <div class="text-center mb-6">
+        <h1 class="text-3xl font-bold text-blue-700">
+          Sorteador de Projetos Finais
+        </h1>
+        <p class="text-gray-600 mt-2">
+          Selecione dois alunos para formar uma dupla e atribuir um projeto.
+        </p>
+      </div>
+
+      <!-- Controles de Seleção -->
+      <div class="flex flex-col sm:flex-row gap-4">
+        <!-- Dropdown de Seleção de Aluno 1 -->
+        <div class="flex-grow">
+          <label
+            for="student1-select"
+            class="block text-sm font-medium text-gray-700 mb-1"
+            >Aluno 1</label
+          >
+          <select
+            id="student1-select"
+            class="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">-- Selecione o Aluno 1 --</option>
+          </select>
+        </div>
+
+        <!-- Dropdown de Seleção de Aluno 2 -->
+        <div class="flex-grow">
+          <label
+            for="student2-select"
+            class="block text-sm font-medium text-gray-700 mb-1"
+            >Aluno 2</label
+          >
+          <select
+            id="student2-select"
+            class="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">-- Selecione o Aluno 2 --</option>
+          </select>
+        </div>
+
+        <!-- Botão de Ação -->
+        <div class="sm:self-end">
+          <button
+            id="suggest-button"
+            class="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition duration-200 ease-in-out"
+          >
+            Sugerir Projeto
+          </button>
+        </div>
+      </div>
+
+      <!-- Loader -->
+      <div id="loader" class="loader hidden"></div>
+
+      <!-- Área de Mensagens (Erros, etc) -->
+      <div id="message-area" class="hidden"></div>
+
+      <!-- Área de Exibição da Sugestão -->
+      <div
+        id="project-suggestion"
+        class="mt-8 p-6 bg-gray-50 border border-gray-200 rounded-lg shadow-inner hidden"
+      >
+        <!-- Conteúdo será injetado pelo JavaScript -->
+      </div>
+
+      <!-- Área de Consulta de Projetos -->
+      <div id="consultation-area" class="mt-10">
+        <h3 class="text-xl font-semibold text-gray-800 border-b pb-2 mb-4">
+          Projetos Atribuídos
+        </h3>
+        <div
+          id="consultation-list"
+          class="space-y-2 max-h-60 overflow-y-auto bg-gray-50 p-4 rounded-lg"
+        >
+          <p class="text-gray-500">
+            Carregando atribuições do banco de dados...
+          </p>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
